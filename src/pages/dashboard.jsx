@@ -5,6 +5,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedProducts, setSelectedProducts] = useState([]); // State for selected products IDs
+  const [productQuantities, setProductQuantities] = useState({}); // Nuevo estado para las cantidades de los productos
   const [saving, setSaving] = useState(false); // State for saving process
 
   const authToken = localStorage.getItem("authToken");
@@ -30,6 +31,12 @@ export default function Dashboard() {
       })
       .then((data) => {
         setProducts(data);
+        // Inicializar las cantidades a 0 para todos los productos cargados
+        const initialQuantities = {};
+        data.forEach(product => {
+          initialQuantities[product.id] = 0; // Cantidad inicial a 0
+        });
+        setProductQuantities(initialQuantities);
         setLoading(false);
         console.log("Products loaded:", data);
       })
@@ -40,32 +47,76 @@ export default function Dashboard() {
       });
   }, [authToken]);
 
-  // Function to handle product selection/deselection
+  // Function to handle product selection/deselection via checkbox
   const handleToggleProduct = (productId) => {
     setSelectedProducts((prevSelected) => {
-      if (prevSelected.includes(productId)) {
+      const isSelected = prevSelected.includes(productId);
+      if (isSelected) {
         // If already selected, remove it
+        // When deselected, set its quantity to 0
+        setProductQuantities(prevQuantities => ({
+            ...prevQuantities,
+            [productId]: 0
+        }));
         return prevSelected.filter((id) => id !== productId);
       } else {
-        // If not selected, add it
+        // If not selected, add it.
+        // If it's being selected, ensure its quantity is at least 1 if it was 0.
+        setProductQuantities(prevQuantities => ({
+            ...prevQuantities,
+            [productId]: Math.max(1, prevQuantities[productId] || 0) // Ensure quantity is at least 1 when selected via checkbox
+        }));
         return [...prevSelected, productId];
       }
     });
   };
 
+  // Nueva función para manejar el cambio de cantidad
+  const handleQuantityChange = (productId, value) => {
+    let newQuantity = parseInt(value || '0', 10);
+    // Asegura que la cantidad esté entre 0 y 999
+    newQuantity = Math.max(0, newQuantity); // Mínimo 0
+    newQuantity = Math.min(999, newQuantity); // Máximo 999
+
+    setProductQuantities(prevQuantities => ({
+      ...prevQuantities,
+      [productId]: newQuantity,
+    }));
+
+    // Sincronizar la selección con la cantidad
+    setSelectedProducts(prevSelected => {
+      const currentlySelected = prevSelected.includes(productId);
+      if (newQuantity === 0 && currentlySelected) {
+        // Si la cantidad se vuelve 0 Y estaba seleccionado, deseleccionarlo.
+        return prevSelected.filter(id => id !== productId);
+      } else if (newQuantity > 0 && !currentlySelected) {
+        // Si la cantidad se vuelve > 0 Y NO estaba seleccionado, seleccionarlo.
+        return [...prevSelected, productId];
+      }
+      // En cualquier otro caso (cantidad > 0 y ya seleccionado, o cantidad 0 y ya deseleccionado), no hay cambio en la selección.
+      return prevSelected;
+    });
+  };
+
+
   // Function to send selected products to the backend
   const handleSaveSelectedProducts = async () => {
-    if (selectedProducts.length === 0) {
-      alert("Please select at least one product to save.");
+    // Filtramos solo los productos que están seleccionados Y tienen una cantidad mayor a 0
+    const productsToSave = products.filter(product => 
+        selectedProducts.includes(product.id) && (productQuantities[product.id] || 0) > 0
+    ).map(product => ({
+        ...product,
+        cantidad: productQuantities[product.id] || 0 // Asegura que tenga cantidad (0 por defecto si no se tocó)
+    }));
+
+    if (productsToSave.length === 0) {
+      alert("Por favor, selecciona al menos un producto con una cantidad mayor a 0 para guardar.");
       return;
     }
 
     setSaving(true);
     setError(null);
-
-    // Filter complete product objects based on selected IDs
-    const productsToSave = products.filter(product => selectedProducts.includes(product.id));
-
+    
     try {
       // URL of your API to save selected products. CHANGE THIS URL!
       // For example: http://localhost:3500/api/guardar-seleccion
@@ -75,21 +126,27 @@ export default function Dashboard() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
         },
-        body: JSON.stringify({ selectedProducts: productsToSave }), // Send complete product objects
+        body: JSON.stringify({ selectedProducts: productsToSave }), // Send complete product objects with quantities
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        alert("Selected products saved successfully!");
+        alert("Productos seleccionados guardados exitosamente!");
         setSelectedProducts([]); // Clear selection after saving
+        // Resetear cantidades a 0 para todos los productos después de guardar
+        const resetQuantities = {};
+        products.forEach(product => {
+          resetQuantities[product.id] = 0;
+        });
+        setProductQuantities(resetQuantities);
         console.log("Backend response:", data);
       } else {
         throw new Error(data.error || "Error saving selected products.");
       }
     } catch (err) {
       console.error("Error saving selected products:", err);
-      setError(err.message || "Could not save selected products. Please try again.");
+      setError(err.message || "No se pudieron guardar los productos seleccionados. Por favor, intenta de nuevo.");
     } finally {
       setSaving(false);
     }
@@ -110,19 +167,30 @@ export default function Dashboard() {
               <table style={styles.table}>
                 <thead>
                   <tr>
-                    <th style={styles.th}>ID</th>
+                    {/* <th style={styles.th}>ID</th> -- Columna ID eliminada */}
                     <th style={styles.th}>Nombre</th>
+                    <th style={styles.th}>Cantidad</th> {/* Nueva columna Cantidad */}
                     <th style={styles.th}>Precio</th>
-                    <th style={styles.th}>Seleccionar</th> {/* New header for checkbox */}
+                    <th style={styles.th}>Seleccionar</th>
                   </tr>
                 </thead>
                 <tbody>
                   {products.map((product) => (
                     <tr key={product.id} style={styles.tr}>
-                      <td style={styles.td}>{product.id}</td>
+                      {/* <td style={styles.td}>{product.id}</td> -- Celda ID eliminada */}
                       <td style={styles.td}>{product.nombre}</td>
+                      <td style={styles.tdQuantity}> {/* Celda para la cantidad */}
+                        <input
+                          type="number"
+                          min="0" // Cantidad mínima 0
+                          max="999" // Cantidad máxima 999
+                          value={productQuantities[product.id] || 0} // Muestra la cantidad actual o 0 por defecto
+                          onChange={(e) => handleQuantityChange(product.id, e.target.value)}
+                          style={styles.quantityInput}
+                        />
+                      </td>
                       <td style={styles.td}>${product.precio}</td>
-                      <td style={styles.tdCheckbox}> {/* New cell for checkbox */}
+                      <td style={styles.tdCheckbox}>
                         <input
                           type="checkbox"
                           checked={selectedProducts.includes(product.id)}
@@ -143,7 +211,7 @@ export default function Dashboard() {
               </button>
             </>
           ) : (
-            <p style={styles.tdNoData}>No hay productos disponibles.</p>
+            <p style={styles.tdNoData} colSpan="4">No hay productos disponibles.</p>
           )}
         </>
       )}
@@ -156,7 +224,7 @@ const styles = {
   container: {
     fontFamily: 'Arial, sans-serif',
     padding: '20px',
-    maxWidth: '800px', // Adjusted width for table layout
+    maxWidth: '900px', // Adjusted width for table layout with new column
     margin: '0 auto',
     backgroundColor: '#f9f9f9',
     borderRadius: '8px',
@@ -192,7 +260,6 @@ const styles = {
     width: '100%',
     borderCollapse: 'collapse',
     marginTop: '20px',
-    // Removed justify-content: flex-start from here, as it's a table
   },
   th: {
     backgroundColor: '#4CAF50',
@@ -206,6 +273,19 @@ const styles = {
     borderBottom: '1px solid #ddd',
     color: '#333',
     textAlign: 'left', // Ensure text in cells is left-aligned
+  },
+  tdQuantity: { // New style for quantity cell
+    padding: '10px 15px',
+    borderBottom: '1px solid #ddd',
+    color: '#333',
+    textAlign: 'center', // Center the quantity input
+  },
+  quantityInput: { // Style for the number input
+    width: '60px',
+    padding: '5px',
+    textAlign: 'center',
+    borderRadius: '4px',
+    border: '1px solid #ccc',
   },
   tdCheckbox: {
     padding: '10px 15px',
@@ -232,7 +312,6 @@ const styles = {
     cursor: 'pointer',
     marginTop: '30px',
     marginBottom: '20px',
-    // Centered the button for better table presentation
     margin: '30px auto 20px auto',
     transition: 'background-color 0.3s ease',
   },
@@ -241,6 +320,5 @@ const styles = {
     padding: '20px',
     color: '#777',
     fontStyle: 'italic',
-    // colSpan will be handled by the HTML structure, not CSS
   }
 };
