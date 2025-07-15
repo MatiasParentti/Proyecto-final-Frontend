@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-
+import API_URL from "../config";
 export default function Login() {
   const navigate = useNavigate();
 
@@ -11,7 +11,7 @@ export default function Login() {
     e.preventDefault();
 
     try {
-      const res = await fetch("http://localhost:3500/auth/login", {
+      const res = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -21,7 +21,6 @@ export default function Login() {
         const { token } = await res.json();
         localStorage.setItem("authToken", token);
 
-        // Navegación reactiva, sin recargar la página
         navigate("/dashboard");
       } else {
         const err = await res.json();
