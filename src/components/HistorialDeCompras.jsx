@@ -13,8 +13,10 @@ export default function HistorialDeCompras() {
     const fetchHistorial = async () => {
       try {
         const res = await fetch(`${API_URL}/api/compra`, {
+          method: "POST",
           headers: {
             Authorization: `Bearer ${authToken}`,
+
           },
         });
 
