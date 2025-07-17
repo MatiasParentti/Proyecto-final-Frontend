@@ -18,10 +18,16 @@ export default function Login() {
       });
 
       if (res.ok) {
-        const { token } = await res.json();
+        const { token, userId, rol } = await res.json();
         localStorage.setItem("authToken", token);
-
-        navigate("/dashboard");
+        localStorage.setItem("userId", userId);
+        localStorage.setItem("rol", rol);
+        if (rol==="admin") {
+          navigate("/dashboard");  
+        }else{
+          navigate("/dashboardUsuario");
+        }
+        
       } else {
         const err = await res.json();
         alert("Error: " + err.error);
